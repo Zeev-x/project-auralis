@@ -80,10 +80,10 @@ class MusicPlayer(QWidget):
         self.scan_btn.setObjectName("primaryButton")
         self.scan_btn.setIcon(self.icon("folder-add.svg"))
         self.scan_btn.setIconSize(QSize(21, 21))
-        self.scan_btn.setToolTip("Tambah folder musik")
+        self.scan_btn.setToolTip("Add Music Folder")
         self.scan_btn.clicked.connect(self.scan_folder)
         header.addWidget(self.scan_btn)
-        header.addSpacing(14)
+        header.addSpacing(60)
         self.brand_widgets = (title, subtitle)
         self.minimize_btn = QPushButton("−")
         self.minimize_btn.setObjectName("windowButton")
@@ -298,8 +298,8 @@ class MusicPlayer(QWidget):
             QPushButton#windowButton { min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; border: none; background: rgba(30, 58, 65, 110); padding: 0; font-size: 18px; }
             QPushButton#windowButton:hover { background: rgba(120, 215, 213, 190); color: #092126; }
             QPushButton#windowButton:last-child:hover { background: #d76f76; color: #ffffff; }
-            QPushButton#controlButton { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 4px; font-size: 19px; }
-            QPushButton#playButton { min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; padding: 4px; font-size: 22px; border-radius: 26px; }
+            QPushButton#controlButton { border: 1px solid #3c6970; border-radius: 12px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 4px; font-size: 19px; }
+            QPushButton#playButton { border: 1px solid #3c6970; border-radius: 32px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; padding: 6px; font-size: 28px; }
             QTableWidget { background: transparent; border: none; gridline-color: transparent; alternate-background-color: rgba(119, 215, 213, 12); }
             QTableWidget::item { padding: 0 10px; border-bottom: 1px solid rgba(150, 210, 211, 20); }
             QTableWidget::item:selected { background: rgba(104, 205, 204, 85); color: #ffffff; border-radius: 6px; }

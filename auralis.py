@@ -13,18 +13,21 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSlider,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 from PyQt6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
-from PyQt6.QtGui import QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtSvg import QSvgRenderer
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 
+transparentMode = True # Set to False to disable transparent mode on Windows
 
 class AccentPolicy(ctypes.Structure):
     _fields_ = [
@@ -46,7 +49,8 @@ class WindowCompositionAttributeData(ctypes.Structure):
 class MusicPlayer(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Project Auralis | MP3 Player")
+        self.setObjectName("playerWindow")
+        self.setWindowTitle("Project Auralis | MP3 and Video Player")
         self.setMinimumSize(900, 620)
         self.resize(1080, 700)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
@@ -80,7 +84,7 @@ class MusicPlayer(QWidget):
         self.scan_btn.setObjectName("primaryButton")
         self.scan_btn.setIcon(self.icon("folder-add.svg"))
         self.scan_btn.setIconSize(QSize(21, 21))
-        self.scan_btn.setToolTip("Add Music Folder")
+        self.scan_btn.setToolTip("Add Media Folder")
         self.scan_btn.clicked.connect(self.scan_folder)
         header.addWidget(self.scan_btn)
         header.addSpacing(60)
@@ -138,13 +142,23 @@ class MusicPlayer(QWidget):
         self.details_layout = QVBoxLayout(self.details)
         self.details_layout.setContentsMargins(24, 24, 24, 24)
         self.details_layout.setSpacing(14)
+        self.media_view = QStackedWidget()
+        self.media_view.setObjectName("mediaView")
+        self.media_view.setMinimumSize(280, 280)
+        self.media_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.thumbnail = QLabel("NO COVER")
         self.thumbnail.setObjectName("thumbnail")
         self.thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumbnail.setScaledContents(False)
-        self.thumbnail.setMinimumSize(280, 280)
+        self.thumbnail.setMinimumSize(0, 0)
         self.thumbnail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.details_layout.addWidget(self.thumbnail)
+        self.media_view.addWidget(self.thumbnail)
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumSize(0, 0)
+        self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        self.media_view.addWidget(self.video_widget)
+        self.details_layout.addWidget(self.media_view)
         self.cover_pixmap = self.app_icon().pixmap(QSize(512, 512))
         self.render_thumbnail()
         self.metadata_label = QLabel("Pilih lagu untuk mulai mendengarkan")
@@ -234,6 +248,7 @@ class MusicPlayer(QWidget):
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
         self.player.setAudioOutput(self.audio)
+        self.player.setVideoOutput(self.video_widget)
         self.audio.setVolume(0.75)
         self.player.durationChanged.connect(self.update_duration)
         self.player.positionChanged.connect(self.update_position)
@@ -282,7 +297,6 @@ class MusicPlayer(QWidget):
     def app_style():
         return """
             QWidget { color: #e8f0f2; font-family: 'Segoe UI'; font-size: 13px; }
-            MusicPlayer { background: rgba(7, 16, 20, 1); }
             QFrame#nowPlaying, QFrame#details { background: rgba(20, 39, 46, 155);
                 border: 1px solid rgba(170, 224, 226, 45); border-radius: 18px; }
             QLabel#brandTitle { color: #dffcff; font-size: 28px; font-weight: 700; letter-spacing: 3px; }
@@ -308,6 +322,11 @@ class MusicPlayer(QWidget):
             QSlider::sub-page:horizontal { background: #78d7d5; border-radius: 2px; }
             QSlider::handle:horizontal { width: 13px; margin: -5px 0; background: #d7fffb; border-radius: 6px; }
         """
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), QColor(7, 16, 20, 32))
 
     def apply_acrylic(self):
         if sys.platform != "win32":
@@ -366,37 +385,29 @@ class MusicPlayer(QWidget):
         self.close_btn.show()
         self.show()
 
-    def toggle_maximize(self):
-        if self.isMaximized():
-            self.showNormal()
-            self.set_compact_mode(True)
-            self.clear_acrylic()
-        else:
-            self.showMaximized()
-            self.set_compact_mode(False)
-            self.apply_acrylic()
-
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange and not self._switching_window_mode:
             if self.isMaximized():
                 self.set_compact_mode(False)
-                self.apply_acrylic()
+                if not transparentMode:
+                    self.apply_acrylic()
             elif not self.isMinimized():
                 self.set_compact_mode(True)
-                self.clear_acrylic()
+                if not transparentMode:
+                    self.clear_acrylic()
 
     def start_row(self, row):
         self.current_index = row
         self.play_current()
 
     def scan_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Pilih Folder Musik")
+        folder = QFileDialog.getExistingDirectory(self, "Pilih Folder Media")
         if folder:
             self.songs = []
             for root, _, files in os.walk(folder):
                 for file in files:
-                    if file.lower().endswith(".mp3"):
+                    if file.lower().endswith((".mp3", ".mp4", ".avi", ".mkv", ".mov")):
                         self.songs.append(os.path.join(root, file))
             self.songs.sort(key=str.lower)
             self.table.setRowCount(len(self.songs))
@@ -440,10 +451,16 @@ class MusicPlayer(QWidget):
     def play_current(self):
         path = self.songs[self.current_index]
         self.table.selectRow(self.current_index)
+        is_video = path.lower().endswith((".mp4", ".avi", ".mkv", ".mov"))
+        if is_video:
+            self.media_view.setCurrentWidget(self.video_widget)
+            self.metadata_label.setText(f"Video: {os.path.basename(path)}")
+        else:
+            self.media_view.setCurrentWidget(self.thumbnail)
+            self.show_thumbnail(path)
+            self.show_metadata(path)
         self.player.setSource(QUrl.fromLocalFile(path))
         self.player.play()
-        self.show_thumbnail(path)
-        self.show_metadata(path)
 
     def toggle_loop(self):
         self.loop_mode = (self.loop_mode + 1) % 3
@@ -501,14 +518,16 @@ class MusicPlayer(QWidget):
         return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
     def toggle_maximize(self):
-        if self.isMaximized() or self.isFullScreen():
+        if self.isMaximized():
             self.showNormal()
             self.set_compact_mode(True)
+            if not transparentMode:
+                self.clear_acrylic()
         else:
             self.showMaximized()
             self.set_compact_mode(False)
-        self.update_window_state(self.windowState())
-
+            if not transparentMode:
+                self.apply_acrylic()
     def set_compact_mode(self, enabled):
         for widget in self.brand_widgets:
             widget.setVisible(not enabled)
@@ -525,6 +544,7 @@ class MusicPlayer(QWidget):
             self.resize(620, 250)
             self.details_layout.setContentsMargins(16, 16, 16, 16)
             self.details_layout.setDirection(QVBoxLayout.Direction.LeftToRight)
+            self.media_view.setFixedSize(190, 190)
             self.thumbnail.setFixedSize(190, 190)
             self.thumbnail.setProperty("compact", True)
             self.thumbnail.style().unpolish(self.thumbnail)
@@ -543,6 +563,8 @@ class MusicPlayer(QWidget):
             for index, button in enumerate((self.prev_btn, self.play_btn, self.next_btn), start=1):
                 self.controls.insertWidget(index, button)
                 button.setVisible(True)
+            self.media_view.setMaximumSize(QSize(16777215, 16777215))
+            self.media_view.setMinimumSize(280, 280)
             self.thumbnail.setProperty("compact", False)
             self.thumbnail.style().unpolish(self.thumbnail)
             self.thumbnail.style().polish(self.thumbnail)
@@ -645,5 +667,6 @@ if __name__ == "__main__":
     window = MusicPlayer()
     window.showMaximized()
     window.update_window_state(window.windowState())
-    window.apply_acrylic()
+    if not transparentMode:
+        window.apply_acrylic()
     sys.exit(app.exec())

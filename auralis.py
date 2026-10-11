@@ -27,7 +27,11 @@ from PyQt6.QtSvg import QSvgRenderer
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 
-transparentMode = True # Set to False to disable transparent mode on Windows
+# Set to False to use Windows acrylic instead of the transparent window.
+TRANSPARENT_MODE = True
+VIDEO_EXTENSIONS = (".mp4", ".avi", ".mkv", ".mov")
+MEDIA_EXTENSIONS = (".mp3",) + VIDEO_EXTENSIONS
+
 
 class AccentPolicy(ctypes.Structure):
     _fields_ = [
@@ -87,6 +91,13 @@ class MusicPlayer(QWidget):
         self.scan_btn.setToolTip("Add Media Folder")
         self.scan_btn.clicked.connect(self.scan_folder)
         header.addWidget(self.scan_btn)
+        self.add_song_btn = QPushButton()
+        self.add_song_btn.setObjectName("primaryButton")
+        self.add_song_btn.setIcon(self.icon("add.svg"))
+        self.add_song_btn.setIconSize(QSize(21, 21))
+        self.add_song_btn.setToolTip("Add a Song or Video")
+        self.add_song_btn.clicked.connect(self.add_song)
+        header.addWidget(self.add_song_btn)
         header.addSpacing(60)
         self.brand_widgets = (title, subtitle)
         self.minimize_btn = QPushButton("−")
@@ -385,16 +396,26 @@ class MusicPlayer(QWidget):
         self.close_btn.show()
         self.show()
 
+    def toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+            self.set_compact_mode(True)
+            self.clear_acrylic()
+        else:
+            self.showMaximized()
+            self.set_compact_mode(False)
+            self.apply_acrylic()
+
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange and not self._switching_window_mode:
             if self.isMaximized():
                 self.set_compact_mode(False)
-                if not transparentMode:
+                if not TRANSPARENT_MODE:
                     self.apply_acrylic()
             elif not self.isMinimized():
                 self.set_compact_mode(True)
-                if not transparentMode:
+                if not TRANSPARENT_MODE:
                     self.clear_acrylic()
 
     def start_row(self, row):
@@ -404,16 +425,35 @@ class MusicPlayer(QWidget):
     def scan_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Pilih Folder Media")
         if folder:
-            self.songs = []
+            media_files = []
             for root, _, files in os.walk(folder):
                 for file in files:
-                    if file.lower().endswith((".mp3", ".mp4", ".avi", ".mkv", ".mov")):
-                        self.songs.append(os.path.join(root, file))
-            self.songs.sort(key=str.lower)
-            self.table.setRowCount(len(self.songs))
-            for i, path in enumerate(self.songs):
-                title = os.path.basename(path)
-                self.table.setItem(i, 0, QTableWidgetItem(title))
+                    if file.lower().endswith(MEDIA_EXTENSIONS):
+                        media_files.append(os.path.join(root, file))
+            media_files.sort(key=str.lower)
+            self.add_songs(media_files)
+
+    def add_song(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Pilih Lagu atau Video",
+            "",
+            "Media files (*.mp3 *.mp4 *.avi *.mkv *.mov)",
+        )
+        if path:
+            self.add_songs([path])
+
+    def add_songs(self, paths):
+        existing_paths = {os.path.normcase(os.path.abspath(path)) for path in self.songs}
+        for path in paths:
+            normalized_path = os.path.normcase(os.path.abspath(path))
+            if normalized_path in existing_paths:
+                continue
+            existing_paths.add(normalized_path)
+            self.songs.append(path)
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.table.setItem(row, 0, QTableWidgetItem(os.path.basename(path)))
 
     def play_song(self):
         row = self.table.currentRow()
@@ -449,10 +489,11 @@ class MusicPlayer(QWidget):
         self.play_current()
 
     def play_current(self):
+        if not self.songs or not 0 <= self.current_index < len(self.songs):
+            return
         path = self.songs[self.current_index]
         self.table.selectRow(self.current_index)
-        is_video = path.lower().endswith((".mp4", ".avi", ".mkv", ".mov"))
-        if is_video:
+        if path.lower().endswith(VIDEO_EXTENSIONS):
             self.media_view.setCurrentWidget(self.video_widget)
             self.metadata_label.setText(f"Video: {os.path.basename(path)}")
         else:
@@ -518,20 +559,23 @@ class MusicPlayer(QWidget):
         return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
     def toggle_maximize(self):
-        if self.isMaximized():
+        if self.isMaximized() or self.isFullScreen():
             self.showNormal()
             self.set_compact_mode(True)
-            if not transparentMode:
+            if not TRANSPARENT_MODE:
                 self.clear_acrylic()
         else:
             self.showMaximized()
             self.set_compact_mode(False)
-            if not transparentMode:
+            if not TRANSPARENT_MODE:
                 self.apply_acrylic()
+        self.update_window_state(self.windowState())
+
     def set_compact_mode(self, enabled):
         for widget in self.brand_widgets:
             widget.setVisible(not enabled)
         self.scan_btn.setVisible(not enabled)
+        self.add_song_btn.setVisible(not enabled)
         self.now_playing.setVisible(not enabled)
         self.metadata_label.setVisible(True)
         self.progress.setVisible(not enabled)
@@ -667,6 +711,6 @@ if __name__ == "__main__":
     window = MusicPlayer()
     window.showMaximized()
     window.update_window_state(window.windowState())
-    if not transparentMode:
+    if not TRANSPARENT_MODE:
         window.apply_acrylic()
     sys.exit(app.exec())
